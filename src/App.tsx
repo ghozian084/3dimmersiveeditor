@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, TransformControls, Environment, Grid, ContactShadows } from '@react-three/drei';
-import { XR, createXRStore } from '@react-three/xr';
+import { XR, createXRStore, useXR, useXRHitTest } from '@react-three/xr';
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Box, Circle, Triangle, Cone, Move, RotateCcw, Maximize, Download, Upload, Palette, Trash2, Glasses, Layers } from 'lucide-react';
 
-const store = createXRStore();
+const store = createXRStore({
+  domOverlay: document.getElementById('root') as HTMLElement
+});
 
 type ShapeType = 'cuboid' | 'sphere' | 'prism' | 'pyramid';
 type TransformMode = 'translate' | 'rotate' | 'scale';
@@ -26,6 +28,68 @@ interface ImportedModel {
   scene: THREE.Group;
 }
 
+function Reticle({ onUpdatePosition }: { onUpdatePosition: (pos: THREE.Vector3) => void }) {
+  const reticleRef = useRef<THREE.Group>(null);
+  const isAR = useXR((state) => state.mode === 'immersive-ar');
+
+  useXRHitTest(
+    (results, getWorldMatrix) => {
+      if (!reticleRef.current || !isAR) return;
+      if (results.length > 0) {
+        reticleRef.current.visible = true;
+        const matrix = new THREE.Matrix4();
+        getWorldMatrix(matrix, results[0]);
+        matrix.decompose(
+          reticleRef.current.position,
+          reticleRef.current.quaternion,
+          reticleRef.current.scale
+        );
+        onUpdatePosition(reticleRef.current.position);
+      } else {
+        reticleRef.current.visible = false;
+      }
+    },
+    'viewer'
+  );
+
+  if (!isAR) return null;
+
+  return (
+    <group ref={reticleRef}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.1, 0.15, 32]} />
+        <meshBasicMaterial color="#4285F4" transparent opacity={0.8} />
+      </mesh>
+    </group>
+  );
+}
+
+function EnvironmentElements() {
+  const isAR = useXR((state) => state.mode === 'immersive-ar');
+  if (isAR) return null;
+  return (
+    <>
+      <Grid infiniteGrid fadeDistance={50} sectionColor="#3f3f46" cellColor="#27272a" />
+      <ContactShadows position={[0, -0.01, 0]} opacity={0.5} scale={20} blur={2} far={10} />
+    </>
+  );
+}
+
+function SceneBackground() {
+  const isAR = useXR((state) => state.mode === 'immersive-ar');
+  const { scene } = useThree();
+
+  useEffect(() => {
+    if (isAR) {
+      scene.background = null;
+    } else {
+      scene.background = new THREE.Color('#18181b');
+    }
+  }, [isAR, scene]);
+
+  return null;
+}
+
 export default function App() {
   const [objects, setObjects] = useState<SceneObject[]>([]);
   const [importedModels, setImportedModels] = useState<ImportedModel[]>([]);
@@ -36,12 +100,18 @@ export default function App() {
   
   const exportGroupRef = useRef<THREE.Group>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const reticlePosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0.5, 0));
 
   const addObject = (type: ShapeType) => {
+    const isAR = store.getState().mode === 'immersive-ar';
+    const position: [number, number, number] = isAR 
+      ? [reticlePosRef.current.x, reticlePosRef.current.y + 0.5, reticlePosRef.current.z]
+      : [0, 0.5, 0];
+
     const newObj: SceneObject = {
       id: Date.now().toString(),
       type,
-      position: [0, 0.5, 0],
+      position,
       rotation: [0, 0, 0],
       scale: [1, 1, 1],
       color: '#4285F4'
@@ -104,7 +174,7 @@ export default function App() {
   const isImportedSelected = importedModels.some(m => m.id === selectedId);
 
   return (
-    <div className="w-screen h-screen bg-zinc-950 text-white overflow-hidden flex flex-col font-sans">
+    <div className="w-screen h-screen text-white overflow-hidden flex flex-col font-sans bg-transparent">
       {/* Top Bar */}
       <header className="h-14 sm:h-16 border-b border-white/10 bg-zinc-900/80 backdrop-blur-md flex items-center justify-between px-3 sm:px-6 z-20 relative">
         <div className="flex items-center gap-2 sm:gap-3">
@@ -264,13 +334,14 @@ export default function App() {
         {/* 3D Canvas */}
         <Canvas camera={{ position: [5, 5, 5], fov: 50 }} onPointerMissed={() => setSelectedId(null)}>
           <XR store={store}>
-            <color attach="background" args={['#18181b']} />
+            <SceneBackground />
             <ambientLight intensity={0.5} />
             <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
             <Environment preset="city" />
             
-            <Grid infiniteGrid fadeDistance={50} sectionColor="#3f3f46" cellColor="#27272a" />
-            <ContactShadows position={[0, -0.01, 0]} opacity={0.5} scale={20} blur={2} far={10} />
+            <EnvironmentElements />
+
+            <Reticle onUpdatePosition={(pos) => reticlePosRef.current.copy(pos)} />
 
             <group ref={exportGroupRef}>
               {objects.map((obj) => (
