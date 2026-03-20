@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "mghozianka@semesta.sch.id" || 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    // Models collection
+    match /models/{modelId} {
+      allow read: if true; // Publicly readable for viewers
+      allow write: if isAdmin();
+    }
+
+    // Interactions collection
+    match /interactions/{interactionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Environments collection
+    match /environments/{envId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read, write: if request.auth.uid == userId || isAdmin();
+    }
+  }
+}

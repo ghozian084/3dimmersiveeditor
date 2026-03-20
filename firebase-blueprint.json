@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "Model": {
+      "title": "3D Model",
+      "description": "Metadata for a 3D model asset.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Display name of the model." },
+        "description": { "type": "string", "description": "Detailed description." },
+        "storagePath": { "type": "string", "description": "Path to the GLB file in Cloud Storage." },
+        "thumbnailPath": { "type": "string", "description": "Path to the thumbnail image." },
+        "category": { "type": "string", "description": "Model category (e.g., Furniture, Education)." },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "storagePath"]
+    },
+    "Interaction": {
+      "title": "Interaction Logic",
+      "description": "Defines how a model responds to user events.",
+      "type": "object",
+      "properties": {
+        "modelId": { "type": "string", "description": "ID of the target model." },
+        "trigger": { "type": "string", "enum": ["tap", "hover", "proximity", "animation_end"] },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["play_sound", "show_text", "change_color", "play_animation"] },
+              "value": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["modelId", "trigger", "actions"]
+    },
+    "Environment": {
+      "title": "Scene Configuration",
+      "description": "Settings for the AR/VR environment.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "preset": { "type": "string" },
+        "backgroundPath": { "type": "string" },
+        "lighting": {
+          "type": "object",
+          "properties": {
+            "intensity": { "type": "number" },
+            "ambientColor": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "models": { "schema": "Model", "description": "Collection of 3D models." },
+    "interactions": { "schema": "Interaction", "description": "Collection of interaction rules." },
+    "environments": { "schema": "Environment", "description": "Collection of scene presets." }
+  }
+}
