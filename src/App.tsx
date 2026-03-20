@@ -32,6 +32,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [transformMode, setTransformMode] = useState<TransformMode>('translate');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSceneGraphOpen, setIsSceneGraphOpen] = useState(false);
   
   const exportGroupRef = useRef<THREE.Group>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,14 +106,14 @@ export default function App() {
   return (
     <div className="w-screen h-screen bg-zinc-950 text-white overflow-hidden flex flex-col font-sans">
       {/* Top Bar */}
-      <header className="h-16 border-b border-white/10 bg-zinc-900/80 backdrop-blur-md flex items-center justify-between px-6 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Box className="w-5 h-5 text-zinc-950" />
+      <header className="h-14 sm:h-16 border-b border-white/10 bg-zinc-900/80 backdrop-blur-md flex items-center justify-between px-3 sm:px-6 z-20 relative">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-7 h-7 sm:w-8 sm:h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+            <Box className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-950" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight">Immersive 3D Editor</h1>
+          <h1 className="font-bold text-sm sm:text-lg tracking-tight truncate">3D Editor</h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <input 
             type="file" 
             accept=".glb,.gltf" 
@@ -120,17 +121,17 @@ export default function App() {
             onChange={handleImport} 
             className="hidden" 
           />
-          <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors">
-            <Upload className="w-4 h-4" /> Import GLB
+          <button onClick={() => fileInputRef.current?.click()} className="p-2 sm:px-3 sm:py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors" title="Import GLB">
+            <Upload className="w-4 h-4 sm:w-4 sm:h-4" />
           </button>
-          <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors">
-            <Download className="w-4 h-4" /> Export GLB
+          <button onClick={handleExport} className="p-2 sm:px-3 sm:py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors" title="Export GLB">
+            <Download className="w-4 h-4 sm:w-4 sm:h-4" />
           </button>
-          <button onClick={() => store.enterAR().catch(err => setErrorMsg("AR is not supported on this device. " + err.message))} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold shadow-lg shadow-emerald-500/20 transition-colors">
-            <Glasses className="w-4 h-4" /> Enter AR
+          <button onClick={() => store.enterAR().catch(err => setErrorMsg("AR is not supported on this device. " + err.message))} className="flex items-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs sm:text-sm font-bold shadow-lg shadow-emerald-500/20 transition-colors">
+            <Glasses className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Enter AR</span><span className="sm:hidden">AR</span>
           </button>
-          <button onClick={() => store.enterVR().catch(err => setErrorMsg("VR is not supported on this device. " + err.message))} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition-colors">
-            <Glasses className="w-4 h-4" /> Enter VR
+          <button onClick={() => setIsSceneGraphOpen(!isSceneGraphOpen)} className="md:hidden p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors" title="Toggle Menu">
+            <Layers className="w-4 h-4" />
           </button>
         </div>
       </header>
@@ -146,36 +147,36 @@ export default function App() {
 
       <div className="flex-1 relative">
         {/* Left Toolbar - Transform Modes */}
-        <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col gap-2 bg-zinc-900/80 backdrop-blur-md p-2 rounded-2xl border border-white/10 z-10">
-          <button onClick={() => setTransformMode('translate')} className={`p-3 rounded-xl transition-colors ${transformMode === 'translate' ? 'bg-emerald-500 text-zinc-950' : 'hover:bg-white/10 text-zinc-400'}`} title="Translate">
-            <Move className="w-5 h-5" />
+        <div className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 flex flex-col gap-1 sm:gap-2 bg-zinc-900/80 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl border border-white/10 z-10">
+          <button onClick={() => setTransformMode('translate')} className={`p-2 sm:p-3 rounded-xl transition-colors ${transformMode === 'translate' ? 'bg-emerald-500 text-zinc-950' : 'hover:bg-white/10 text-zinc-400'}`} title="Translate">
+            <Move className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
-          <button onClick={() => setTransformMode('rotate')} className={`p-3 rounded-xl transition-colors ${transformMode === 'rotate' ? 'bg-emerald-500 text-zinc-950' : 'hover:bg-white/10 text-zinc-400'}`} title="Rotate">
-            <RotateCcw className="w-5 h-5" />
+          <button onClick={() => setTransformMode('rotate')} className={`p-2 sm:p-3 rounded-xl transition-colors ${transformMode === 'rotate' ? 'bg-emerald-500 text-zinc-950' : 'hover:bg-white/10 text-zinc-400'}`} title="Rotate">
+            <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
-          <button onClick={() => setTransformMode('scale')} className={`p-3 rounded-xl transition-colors ${transformMode === 'scale' ? 'bg-emerald-500 text-zinc-950' : 'hover:bg-white/10 text-zinc-400'}`} title="Scale">
-            <Maximize className="w-5 h-5" />
+          <button onClick={() => setTransformMode('scale')} className={`p-2 sm:p-3 rounded-xl transition-colors ${transformMode === 'scale' ? 'bg-emerald-500 text-zinc-950' : 'hover:bg-white/10 text-zinc-400'}`} title="Scale">
+            <Maximize className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
         {/* Bottom Toolbar - Add Shapes */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-md p-2 rounded-2xl border border-white/10 z-10">
-          <button onClick={() => addObject('cuboid')} className="flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium">
-            <Box className="w-4 h-4 text-blue-400" /> Cuboid
+        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-2 bg-zinc-900/80 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl border border-white/10 z-10 w-[90%] sm:w-auto overflow-x-auto custom-scrollbar">
+          <button onClick={() => addObject('cuboid')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
+            <Box className="w-5 h-5 sm:w-4 sm:h-4 text-blue-400" /> <span className="hidden sm:inline">Cuboid</span>
           </button>
-          <button onClick={() => addObject('sphere')} className="flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium">
-            <Circle className="w-4 h-4 text-red-400" /> Sphere
+          <button onClick={() => addObject('sphere')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
+            <Circle className="w-5 h-5 sm:w-4 sm:h-4 text-red-400" /> <span className="hidden sm:inline">Sphere</span>
           </button>
-          <button onClick={() => addObject('prism')} className="flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium">
-            <Triangle className="w-4 h-4 text-green-400" /> Prism
+          <button onClick={() => addObject('prism')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
+            <Triangle className="w-5 h-5 sm:w-4 sm:h-4 text-green-400" /> <span className="hidden sm:inline">Prism</span>
           </button>
-          <button onClick={() => addObject('pyramid')} className="flex items-center gap-2 px-4 py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium">
-            <Cone className="w-4 h-4 text-yellow-400" /> Pyramid
+          <button onClick={() => addObject('pyramid')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
+            <Cone className="w-5 h-5 sm:w-4 sm:h-4 text-yellow-400" /> <span className="hidden sm:inline">Pyramid</span>
           </button>
         </div>
 
         {/* Right Panel - Scene Graph & Properties */}
-        <div className="absolute right-6 top-6 w-64 max-h-[calc(100vh-8rem)] flex flex-col bg-zinc-900/90 backdrop-blur-md border border-white/10 rounded-2xl p-5 z-10 shadow-2xl overflow-y-auto custom-scrollbar">
+        <div className={`absolute right-2 sm:right-6 top-16 sm:top-6 w-56 sm:w-64 max-h-[calc(100vh-8rem)] flex flex-col bg-zinc-900/90 backdrop-blur-md border border-white/10 rounded-2xl p-4 sm:p-5 z-20 shadow-2xl overflow-y-auto custom-scrollbar transition-transform duration-300 ${isSceneGraphOpen ? 'translate-x-0' : 'translate-x-[150%] md:translate-x-0'}`}>
           
           {/* Scene Graph */}
           <div className="mb-6">
