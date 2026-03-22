@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Box, Circle, Triangle, Cone, Move, RotateCcw, Maximize, Download, Upload, Palette, Trash2, Glasses, Layers } from 'lucide-react';
+import { useStore } from 'zustand';
 
 const store = createXRStore({
   domOverlay: document.getElementById('root') as HTMLElement
@@ -90,7 +91,115 @@ function SceneBackground() {
   return null;
 }
 
+function ARInteractionHandler({ selectedId, exportGroupRef, setObjects, isAR }: any) {
+  const { camera } = useThree();
+  const planeRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  const raycaster = useRef(new THREE.Raycaster());
+  const isDragging = useRef(false);
+  const initialPinchDistance = useRef<number | null>(null);
+  const initialScale = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isAR || !selectedId) return;
+    
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        isDragging.current = true;
+      } else if (e.touches.length === 2) {
+        isDragging.current = false;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        initialPinchDistance.current = Math.sqrt(dx * dx + dy * dy);
+        
+        const obj = exportGroupRef.current?.getObjectByName(selectedId);
+        if (obj) {
+          initialScale.current = obj.scale.x;
+        }
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      // Check if the touch is on a UI element (e.g., buttons)
+      if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('header') || (e.target as HTMLElement).closest('.custom-scrollbar')) {
+        return;
+      }
+
+      if (e.touches.length === 1 && isDragging.current) {
+        const touch = e.touches[0];
+        const x = (touch.clientX / window.innerWidth) * 2 - 1;
+        const y = -(touch.clientY / window.innerHeight) * 2 + 1;
+        
+        raycaster.current.setFromCamera(new THREE.Vector2(x, y), camera);
+        
+        const obj = exportGroupRef.current?.getObjectByName(selectedId);
+        if (obj) {
+          planeRef.current.setComponents(0, 1, 0, -obj.position.y);
+          const target = new THREE.Vector3();
+          raycaster.current.ray.intersectPlane(planeRef.current, target);
+          if (target) {
+            obj.position.copy(target);
+          }
+        }
+      } else if (e.touches.length === 2 && initialPinchDistance.current !== null && initialScale.current !== null) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        const scaleFactor = distance / initialPinchDistance.current;
+        const newScale = Math.max(0.1, initialScale.current * scaleFactor);
+        
+        const obj = exportGroupRef.current?.getObjectByName(selectedId);
+        if (obj) {
+          obj.scale.set(newScale, newScale, newScale);
+        }
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        if (initialPinchDistance.current !== null) {
+          // Pinch ended
+          initialPinchDistance.current = null;
+          const obj = exportGroupRef.current?.getObjectByName(selectedId);
+          if (obj) {
+            setObjects((prev: any[]) => prev.map((o: any) => o.id === selectedId ? { ...o, scale: [obj.scale.x, obj.scale.y, obj.scale.z] } : o));
+          }
+        }
+      }
+      
+      if (e.touches.length === 0) {
+        if (isDragging.current) {
+          isDragging.current = false;
+          const obj = exportGroupRef.current?.getObjectByName(selectedId);
+          if (obj) {
+            setObjects((prev: any[]) => prev.map((o: any) => o.id === selectedId ? { ...o, position: [obj.position.x, obj.position.y, obj.position.z] } : o));
+          }
+        }
+      }
+    };
+
+    const domOverlay = document.getElementById('root');
+    if (domOverlay) {
+      domOverlay.addEventListener('touchstart', handleTouchStart, { passive: true });
+      domOverlay.addEventListener('touchmove', handleTouchMove, { passive: false });
+      domOverlay.addEventListener('touchend', handleTouchEnd);
+      domOverlay.addEventListener('touchcancel', handleTouchEnd);
+      return () => {
+        domOverlay.removeEventListener('touchstart', handleTouchStart);
+        domOverlay.removeEventListener('touchmove', handleTouchMove);
+        domOverlay.removeEventListener('touchend', handleTouchEnd);
+        domOverlay.removeEventListener('touchcancel', handleTouchEnd);
+      };
+    }
+  }, [isAR, selectedId, camera, setObjects, exportGroupRef]);
+
+  return null;
+}
+
 export default function App() {
+  const xrMode = useStore(store, (state: any) => state.mode);
+  const isAR = xrMode === 'immersive-ar';
+
   const [objects, setObjects] = useState<SceneObject[]>([]);
   const [importedModels, setImportedModels] = useState<ImportedModel[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -102,22 +211,25 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reticlePosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0.5, 0));
 
-  const addObject = (type: ShapeType) => {
-    const isAR = store.getState().mode === 'immersive-ar';
-    const position: [number, number, number] = isAR 
-      ? [reticlePosRef.current.x, reticlePosRef.current.y + 0.5, reticlePosRef.current.z]
-      : [0, 0.5, 0];
+  const handleShapeClick = (type: ShapeType) => {
+    if (selectedId && objects.some(o => o.id === selectedId)) {
+      setObjects(objects.map(o => o.id === selectedId ? { ...o, type } : o));
+    } else {
+      const position: [number, number, number] = isAR 
+        ? [reticlePosRef.current.x, reticlePosRef.current.y + 0.5, reticlePosRef.current.z]
+        : [0, 0.5, 0];
 
-    const newObj: SceneObject = {
-      id: Date.now().toString(),
-      type,
-      position,
-      rotation: [0, 0, 0],
-      scale: [1, 1, 1],
-      color: '#4285F4'
-    };
-    setObjects([...objects, newObj]);
-    setSelectedId(newObj.id);
+      const newObj: SceneObject = {
+        id: Date.now().toString(),
+        type,
+        position,
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+        color: '#4285F4'
+      };
+      setObjects([...objects, newObj]);
+      setSelectedId(newObj.id);
+    }
   };
 
   const deleteSelected = () => {
@@ -174,9 +286,13 @@ export default function App() {
   const isImportedSelected = importedModels.some(m => m.id === selectedId);
 
   return (
-    <div className="w-screen h-screen text-white overflow-hidden flex flex-col font-sans bg-transparent">
+    <div className="w-screen h-screen text-white overflow-hidden flex flex-col font-sans bg-transparent touch-none">
       {/* Top Bar */}
-      <header className="h-14 sm:h-16 border-b border-white/10 bg-zinc-900/80 backdrop-blur-md flex items-center justify-between px-3 sm:px-6 z-20 relative">
+      <header 
+        className="h-14 sm:h-16 border-b border-white/10 bg-zinc-900/80 backdrop-blur-md flex items-center justify-between px-3 sm:px-6 z-20 relative"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="w-7 h-7 sm:w-8 sm:h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
             <Box className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-950" />
@@ -197,8 +313,18 @@ export default function App() {
           <button onClick={handleExport} className="p-2 sm:px-3 sm:py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors" title="Export GLB">
             <Download className="w-4 h-4 sm:w-4 sm:h-4" />
           </button>
-          <button onClick={() => store.enterAR().catch(err => setErrorMsg("AR is not supported on this device. " + err.message))} className="flex items-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs sm:text-sm font-bold shadow-lg shadow-emerald-500/20 transition-colors">
-            <Glasses className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Enter AR</span><span className="sm:hidden">AR</span>
+          <button onClick={() => {
+            if (isAR) {
+              (window as any).currentXRSession?.end();
+            } else {
+              store.enterAR().then(session => {
+                if (session) {
+                  (window as any).currentXRSession = session;
+                }
+              }).catch(err => setErrorMsg("AR is not supported on this device. " + err.message));
+            }
+          }} className="flex items-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs sm:text-sm font-bold shadow-lg shadow-emerald-500/20 transition-colors">
+            <Glasses className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">{isAR ? 'Exit AR' : 'Enter AR'}</span><span className="sm:hidden">{isAR ? 'Exit' : 'AR'}</span>
           </button>
           <button onClick={() => setIsSceneGraphOpen(!isSceneGraphOpen)} className="md:hidden p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors" title="Toggle Menu">
             <Layers className="w-4 h-4" />
@@ -217,7 +343,11 @@ export default function App() {
 
       <div className="flex-1 relative">
         {/* Left Toolbar - Transform Modes */}
-        <div className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 flex flex-col gap-1 sm:gap-2 bg-zinc-900/80 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl border border-white/10 z-10">
+        <div 
+          className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 flex flex-col gap-1 sm:gap-2 bg-zinc-900/80 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl border border-white/10 z-10"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
           <button onClick={() => setTransformMode('translate')} className={`p-2 sm:p-3 rounded-xl transition-colors ${transformMode === 'translate' ? 'bg-emerald-500 text-zinc-950' : 'hover:bg-white/10 text-zinc-400'}`} title="Translate">
             <Move className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
@@ -230,23 +360,31 @@ export default function App() {
         </div>
 
         {/* Bottom Toolbar - Add Shapes */}
-        <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-2 bg-zinc-900/80 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl border border-white/10 z-10 w-[90%] sm:w-auto overflow-x-auto custom-scrollbar">
-          <button onClick={() => addObject('cuboid')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
+        <div 
+          className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-2 bg-zinc-900/80 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl border border-white/10 z-10 w-[90%] sm:w-auto overflow-x-auto custom-scrollbar"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button onClick={() => handleShapeClick('cuboid')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
             <Box className="w-5 h-5 sm:w-4 sm:h-4 text-blue-400" /> <span className="hidden sm:inline">Cuboid</span>
           </button>
-          <button onClick={() => addObject('sphere')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
+          <button onClick={() => handleShapeClick('sphere')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
             <Circle className="w-5 h-5 sm:w-4 sm:h-4 text-red-400" /> <span className="hidden sm:inline">Sphere</span>
           </button>
-          <button onClick={() => addObject('prism')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
+          <button onClick={() => handleShapeClick('prism')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
             <Triangle className="w-5 h-5 sm:w-4 sm:h-4 text-green-400" /> <span className="hidden sm:inline">Prism</span>
           </button>
-          <button onClick={() => addObject('pyramid')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
+          <button onClick={() => handleShapeClick('pyramid')} className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 hover:bg-white/10 rounded-xl transition-colors text-sm font-medium flex-1 sm:flex-none min-w-[3rem]">
             <Cone className="w-5 h-5 sm:w-4 sm:h-4 text-yellow-400" /> <span className="hidden sm:inline">Pyramid</span>
           </button>
         </div>
 
         {/* Right Panel - Scene Graph & Properties */}
-        <div className={`absolute right-2 sm:right-6 top-16 sm:top-6 w-56 sm:w-64 max-h-[calc(100vh-8rem)] flex flex-col bg-zinc-900/90 backdrop-blur-md border border-white/10 rounded-2xl p-4 sm:p-5 z-20 shadow-2xl overflow-y-auto custom-scrollbar transition-transform duration-300 ${isSceneGraphOpen ? 'translate-x-0' : 'translate-x-[150%] md:translate-x-0'}`}>
+        <div 
+          className={`absolute right-2 sm:right-6 top-16 sm:top-6 w-56 sm:w-64 max-h-[calc(100vh-8rem)] flex flex-col bg-zinc-900/90 backdrop-blur-md border border-white/10 rounded-2xl p-4 sm:p-5 z-20 shadow-2xl overflow-y-auto custom-scrollbar transition-transform duration-300 ${isSceneGraphOpen ? 'translate-x-0' : 'translate-x-[150%] md:translate-x-0'}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
           
           {/* Scene Graph */}
           <div className="mb-6">
@@ -332,8 +470,12 @@ export default function App() {
         </div>
 
         {/* 3D Canvas */}
-        <Canvas camera={{ position: [5, 5, 5], fov: 50 }} onPointerMissed={() => setSelectedId(null)}>
+        <Canvas 
+          camera={{ position: [5, 5, 5], fov: 50 }} 
+          onPointerMissed={() => setSelectedId(null)}
+        >
           <XR store={store}>
+            <ARInteractionHandler selectedId={selectedId} exportGroupRef={exportGroupRef} setObjects={setObjects} isAR={isAR} />
             <SceneBackground />
             <ambientLight intensity={0.5} />
             <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
@@ -341,7 +483,9 @@ export default function App() {
             
             <EnvironmentElements />
 
-            <Reticle onUpdatePosition={(pos) => reticlePosRef.current.copy(pos)} />
+            <Reticle onUpdatePosition={(pos) => {
+              reticlePosRef.current.copy(pos);
+            }} />
 
             <group ref={exportGroupRef}>
               {objects.map((obj) => (
@@ -352,6 +496,10 @@ export default function App() {
                   rotation={obj.rotation}
                   scale={obj.scale}
                   onClick={(e) => { e.stopPropagation(); setSelectedId(obj.id); }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    setSelectedId(obj.id);
+                  }}
                   castShadow
                   receiveShadow
                 >
@@ -369,11 +517,15 @@ export default function App() {
                   object={model.scene} 
                   name={model.id}
                   onClick={(e: any) => { e.stopPropagation(); setSelectedId(model.id); }}
+                  onPointerDown={(e: any) => {
+                    e.stopPropagation();
+                    setSelectedId(model.id);
+                  }}
                 />
               ))}
             </group>
 
-            {selectedId && exportGroupRef.current?.getObjectByName(selectedId) && (
+            {selectedId && exportGroupRef.current?.getObjectByName(selectedId) && !isAR && (
               <TransformControls
                 object={exportGroupRef.current.getObjectByName(selectedId)}
                 mode={transformMode}
@@ -396,7 +548,7 @@ export default function App() {
               />
             )}
 
-            <OrbitControls makeDefault />
+            <OrbitControls makeDefault enabled={!isAR} />
           </XR>
         </Canvas>
       </div>
