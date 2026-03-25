@@ -5,7 +5,7 @@ import { XR, createXRStore, useXR, useXRHitTest } from '@react-three/xr';
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { Box, Circle, Triangle, Cone, Move, RotateCcw, Maximize, Download, Upload, Palette, Trash2, Glasses, Layers } from 'lucide-react';
+import { Box, Circle, Triangle, Cone, Move, RotateCcw, Maximize, Minimize, Download, Upload, Palette, Trash2, Glasses, Layers, SlidersHorizontal } from 'lucide-react';
 import { useStore } from 'zustand';
 
 const store = createXRStore({
@@ -22,6 +22,7 @@ interface SceneObject {
   rotation: [number, number, number];
   scale: [number, number, number];
   color: string;
+  opacity?: number;
 }
 
 interface ImportedModel {
@@ -206,6 +207,27 @@ export default function App() {
   const [transformMode, setTransformMode] = useState<TransformMode>('translate');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSceneGraphOpen, setIsSceneGraphOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
   
   const exportGroupRef = useRef<THREE.Group>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -225,7 +247,8 @@ export default function App() {
         position,
         rotation: [0, 0, 0],
         scale: [1, 1, 1],
-        color: '#4285F4'
+        color: '#4285F4',
+        opacity: 1
       };
       setObjects([...objects, newObj]);
       setSelectedId(newObj.id);
@@ -241,6 +264,10 @@ export default function App() {
 
   const updateSelectedColor = (color: string) => {
     setObjects(objects.map(o => o.id === selectedId ? { ...o, color } : o));
+  };
+
+  const updateSelectedOpacity = (opacity: number) => {
+    setObjects(objects.map(o => o.id === selectedId ? { ...o, opacity } : o));
   };
 
   const handleExport = () => {
@@ -312,6 +339,9 @@ export default function App() {
           </button>
           <button onClick={handleExport} className="p-2 sm:px-3 sm:py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors" title="Export GLB">
             <Download className="w-4 h-4 sm:w-4 sm:h-4" />
+          </button>
+          <button onClick={toggleFullscreen} className="p-2 sm:px-3 sm:py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors" title="Toggle Fullscreen">
+            {isFullscreen ? <Minimize className="w-4 h-4 sm:w-4 sm:h-4" /> : <Maximize className="w-4 h-4 sm:w-4 sm:h-4" />}
           </button>
           <button onClick={() => {
             if (isAR) {
@@ -453,6 +483,39 @@ export default function App() {
                 </div>
               )}
 
+              {selectedObject && (
+                <div className="space-y-3 mb-6">
+                  <label className="text-xs text-zinc-400 flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4" /> Opacity
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="range" 
+                      min="0.1" max="1" step="0.05"
+                      value={selectedObject.opacity ?? 1}
+                      onChange={(e) => updateSelectedOpacity(parseFloat(e.target.value))}
+                      className="w-full accent-emerald-500"
+                    />
+                    <span className="text-xs text-zinc-400 w-8 text-right">{Math.round((selectedObject.opacity ?? 1) * 100)}%</span>
+                  </div>
+                </div>
+              )}
+
+              {isAR && selectedId && (
+                <button 
+                  onClick={() => {
+                    const obj = exportGroupRef.current?.getObjectByName(selectedId);
+                    if (obj) {
+                      obj.position.copy(reticlePosRef.current);
+                      setObjects(prev => prev.map(o => o.id === selectedId ? { ...o, position: [reticlePosRef.current.x, reticlePosRef.current.y, reticlePosRef.current.z] } : o));
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-xl transition-colors text-sm font-bold mb-4"
+                >
+                  <Move className="w-4 h-4" /> Move to Reticle
+                </button>
+              )}
+
               {isImportedSelected && (
                 <div className="mb-6 text-sm text-zinc-400 italic">
                   Imported 3D Model selected. Transform tools are available.
@@ -507,7 +570,7 @@ export default function App() {
                   {obj.type === 'sphere' && <sphereGeometry args={[0.6, 32, 32]} />}
                   {obj.type === 'prism' && <cylinderGeometry args={[0.6, 0.6, 1, 3]} />}
                   {obj.type === 'pyramid' && <cylinderGeometry args={[0, 0.7, 1, 4]} />}
-                  <meshStandardMaterial color={obj.color} roughness={0.2} metalness={0.1} />
+                  <meshStandardMaterial color={obj.color} roughness={0.2} metalness={0.1} transparent={true} opacity={obj.opacity ?? 1} />
                 </mesh>
               ))}
 
