@@ -1,5 +1,5 @@
 {
-  "name": "Immersive AR/VR Experience Builder",
+  "name": "Alhazed 3D Immersive lab",
   "description": "A platform for creating and experiencing interactive 3D AR/VR environments using WebXR and Google Cloud.",
   "requestFramePermissions": ["camera"]
 }
